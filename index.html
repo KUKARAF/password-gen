@@ -1,0 +1,1180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Passphrase Generator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+<style>
+:root {
+  --bg:       #0a0a0b;
+  --bg-1:     #0e0e10;
+  --bg-2:     #131316;
+  --bg-3:     #1a1a1e;
+  --line:     #232328;
+  --line-soft:#1c1c20;
+  --ink:      #e9e9ec;
+  --ink-2:    #b6b6bc;
+  --ink-3:    #6e6e76;
+  --ink-4:    #45454c;
+
+  --accent-h: 145;
+  --accent:     oklch(0.85 0.18 var(--accent-h));
+  --accent-dim: oklch(0.55 0.15 var(--accent-h));
+  --accent-glow:oklch(0.85 0.18 var(--accent-h) / 0.18);
+
+  --warn-h: 75;
+  --warn:     oklch(0.82 0.16 var(--warn-h));
+
+  --mono: "JetBrains Mono", "IBM Plex Mono", ui-monospace, monospace;
+  --sans: "Inter", -apple-system, system-ui, sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body {
+  height: 100%; margin: 0;
+  background: var(--bg); color: var(--ink);
+  font-family: var(--sans); font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+::selection { background: var(--accent); color: #0a0a0b; }
+button { font-family: inherit; cursor: pointer; }
+a { color: var(--ink-3); text-decoration: none; border-bottom: 1px dashed var(--ink-4); }
+a:hover { color: var(--accent); border-color: var(--accent-dim); }
+
+/* ── App shell ────────────────────────────────── */
+.app {
+  height: 100%;
+  display: grid;
+  grid-template-rows: 56px 1fr;
+  background:
+    radial-gradient(1200px 600px at 20% -200px, oklch(0.85 0.18 var(--accent-h) / 0.04), transparent 60%),
+    var(--bg);
+}
+
+/* ── Top bar ────────────────────────────────────── */
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 24px;
+  border-bottom: 1px solid var(--line-soft);
+  background: rgba(10,10,11,0.85);
+  backdrop-filter: blur(8px);
+  position: relative; z-index: 5;
+}
+.brand {
+  display: flex; align-items: baseline; gap: 12px;
+  font-family: var(--mono); font-size: 12px; letter-spacing: 0.08em;
+}
+.brand-mark { color: var(--accent); letter-spacing: -2px; }
+.brand-name { color: var(--ink); font-weight: 600; }
+.brand-ver  { color: var(--ink-3); font-size: 11px; }
+.topbar-meta { display: flex; gap: 18px; font-family: var(--mono); font-size: 11px; }
+.meta-item  { display: flex; gap: 6px; align-items: baseline; }
+.meta-k     { color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.08em; }
+.meta-v     { color: var(--ink); }
+
+/* ── Left rail nav ──────────────────────────────── */
+.panel-nav {
+  position: fixed; left: 16px; top: 50%; transform: translateY(-50%);
+  display: flex; flex-direction: column; gap: 18px; z-index: 6;
+}
+.nav-dot {
+  background: transparent; border: none; padding: 4px 0;
+  display: flex; align-items: center; gap: 10px;
+  font-family: var(--mono); font-size: 10px;
+  color: var(--ink-3); letter-spacing: 0.1em;
+}
+.nav-dot .nav-bar {
+  width: 22px; height: 1px; background: var(--ink-4);
+  transition: width .25s, background .25s;
+}
+.nav-dot:hover { color: var(--ink-2); }
+.nav-dot:hover .nav-bar { background: var(--ink-2); width: 30px; }
+.nav-dot.active { color: var(--accent); }
+.nav-dot.active .nav-bar { background: var(--accent); width: 38px; }
+
+/* ── Scroller + panels ──────────────────────────── */
+.scroller {
+  overflow-y: auto;
+  scroll-snap-type: y mandatory;
+  scrollbar-width: thin; scrollbar-color: var(--line) transparent;
+}
+.scroller::-webkit-scrollbar { width: 6px; }
+.scroller::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
+
+.panel {
+  height: 100%; scroll-snap-align: start;
+  padding: 24px 64px 24px 80px;
+  display: flex; align-items: stretch;
+}
+.panel-frame {
+  flex: 1;
+  border: 1px solid var(--line-soft);
+  background: linear-gradient(180deg, var(--bg-1), var(--bg));
+  border-radius: 4px;
+  display: grid; position: relative; overflow: hidden;
+}
+/* corner tick marks */
+.panel-frame::before {
+  content: "";
+  position: absolute; inset: 0; pointer-events: none;
+  background:
+    linear-gradient(90deg,  var(--accent) 0 8px, transparent 8px) top    left  / 8px 1px no-repeat,
+    linear-gradient(0deg,   var(--accent) 0 8px, transparent 8px) top    left  / 1px 8px no-repeat,
+    linear-gradient(270deg, var(--accent) 0 8px, transparent 8px) top    right / 8px 1px no-repeat,
+    linear-gradient(0deg,   var(--accent) 0 8px, transparent 8px) top    right / 1px 8px no-repeat,
+    linear-gradient(90deg,  var(--accent) 0 8px, transparent 8px) bottom left  / 8px 1px no-repeat,
+    linear-gradient(180deg, var(--accent) 0 8px, transparent 8px) bottom left  / 1px 8px no-repeat,
+    linear-gradient(270deg, var(--accent) 0 8px, transparent 8px) bottom right / 8px 1px no-repeat,
+    linear-gradient(180deg, var(--accent) 0 8px, transparent 8px) bottom right / 1px 8px no-repeat;
+  opacity: 0.55;
+}
+.panel-1 .panel-frame { grid-template-rows: auto 1fr auto auto; }
+.panel-2 .panel-frame { grid-template-rows: auto auto 1fr auto; }
+.panel-3 .panel-frame { grid-template-rows: auto 1fr auto auto; }
+
+.panel-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 24px; border-bottom: 1px solid var(--line-soft); gap: 16px;
+}
+.panel-tag { display: flex; align-items: baseline; gap: 12px; font-family: var(--mono); }
+.tag-num   { color: var(--accent); font-size: 13px; letter-spacing: 0.1em; }
+.tag-label { color: var(--ink); font-size: 12px; letter-spacing: 0.16em; font-weight: 500; }
+
+/* ── Lang pills ─────────────────────────────────── */
+.lang-pills { display: flex; gap: 8px; flex-wrap: wrap; }
+.pill {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 12px;
+  border: 1px solid var(--line); background: transparent;
+  color: var(--ink-2); border-radius: 999px;
+  font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em;
+  transition: all .15s;
+}
+.pill:hover { color: var(--ink); border-color: var(--ink-4); }
+.pill .pill-code { font-weight: 600; }
+.pill .pill-name { font-family: var(--sans); font-size: 11px; color: var(--ink-3); letter-spacing: 0; }
+.pill .pill-dot  { width: 6px; height: 6px; border-radius: 50%; background: var(--line); flex-shrink: 0; }
+.pill.on {
+  border-color: var(--accent-dim); background: var(--accent-glow); color: var(--accent);
+}
+.pill.on .pill-dot { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+.pill.on .pill-name { color: oklch(0.85 0.18 var(--accent-h) / 0.7); }
+.lang-pills.compact .pill { padding: 4px 10px; font-size: 10px; }
+
+/* ── Entropy canvas ─────────────────────────────── */
+.entropy-canvas-wrap {
+  position: relative; margin: 16px 24px 0;
+  border: 1px solid var(--line-soft);
+  background:
+    repeating-linear-gradient(0deg,  transparent 0 39px, oklch(0.85 0.18 var(--accent-h) / 0.025) 39px 40px),
+    repeating-linear-gradient(90deg, transparent 0 39px, oklch(0.85 0.18 var(--accent-h) / 0.025) 39px 40px),
+    var(--bg);
+  border-radius: 2px; overflow: hidden;
+  display: flex; flex-direction: column;
+}
+.entropy-canvas {
+  flex: 1; width: 100%; display: block; cursor: crosshair; min-height: 180px;
+}
+.entropy-overlay {
+  position: absolute; top: 16px; left: 16px; right: 16px;
+  display: flex; justify-content: space-between; align-items: flex-start;
+  pointer-events: none; font-family: var(--mono);
+}
+.entropy-hud { display: flex; flex-direction: column; gap: 4px; }
+.hud-label   { font-size: 10px; letter-spacing: 0.18em; color: var(--ink-3); }
+.hud-value   { display: flex; align-items: baseline; gap: 4px; }
+.hud-num     { font-size: 28px; color: var(--accent); font-weight: 500; font-variant-numeric: tabular-nums; }
+.hud-sep     { color: var(--ink-4); font-size: 18px; }
+.hud-target  { color: var(--ink-2); font-size: 18px; font-variant-numeric: tabular-nums; }
+.hud-unit    { font-size: 11px; color: var(--ink-3); margin-left: 6px; letter-spacing: 0.08em; }
+.entropy-status .status-ok         { color: var(--accent); }
+.entropy-status .status-collecting { color: var(--ink-3); }
+.entropy-status .status-ok::before,
+.entropy-status .status-collecting::before { animation: blink 1.6s infinite; }
+@keyframes blink { 0%,60%{opacity:1} 80%,100%{opacity:0.2} }
+
+.entropy-bar {
+  position: relative; height: 6px;
+  background: var(--bg-2); border-top: 1px solid var(--line-soft);
+}
+.entropy-bar-fill {
+  position: absolute; inset: 0 auto 0 0;
+  background: linear-gradient(90deg, var(--accent-dim), var(--accent));
+  box-shadow: 0 0 12px var(--accent-glow);
+  transition: width .25s linear;
+}
+.entropy-bar-ticks { position: absolute; inset: 0; display: flex; pointer-events: none; }
+.entropy-bar-ticks .tick { flex: 1; border-right: 1px solid var(--bg); }
+.entropy-bar-ticks .tick:last-child { border-right: none; }
+
+/* ── Panel 1 foot ───────────────────────────────── */
+.panel-foot {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 24px; border-top: 1px solid var(--line-soft); gap: 24px;
+}
+.panel-foot-1 { border-top: none; padding-top: 14px; }
+.instruction-main { font-size: 14px; color: var(--ink); }
+.instruction-sub  { font-family: var(--mono); font-size: 11px; color: var(--ink-3); margin-top: 4px; letter-spacing: 0.04em; }
+.proceed-btn {
+  display: flex; align-items: center; gap: 8px; padding: 10px 16px;
+  background: var(--accent-glow); border: 1px solid var(--accent-dim);
+  color: var(--accent); font-family: var(--mono); font-size: 11px;
+  letter-spacing: 0.14em; text-transform: uppercase;
+  border-radius: 2px; transition: all .15s;
+}
+.proceed-btn:hover:not(:disabled) {
+  background: var(--accent); color: #0a0a0b;
+  box-shadow: 0 0 24px var(--accent-glow);
+}
+.proceed-btn:disabled {
+  opacity: 0.35; cursor: not-allowed;
+  border-color: var(--line); background: transparent; color: var(--ink-3);
+}
+.attribution {
+  position: absolute; bottom: 8px; right: 24px;
+  font-family: var(--mono); font-size: 10px; color: var(--ink-4); letter-spacing: 0.04em;
+}
+
+/* ── Panel 2: words ─────────────────────────────── */
+.words-controls {
+  display: flex; align-items: center; gap: 24px;
+  padding: 16px 24px; border-bottom: 1px solid var(--line-soft); flex-wrap: wrap;
+}
+.stepper {
+  display: inline-flex; align-items: stretch;
+  border: 1px solid var(--line); border-radius: 2px; overflow: hidden; background: var(--bg-1);
+}
+.stepper button {
+  background: transparent; border: none; color: var(--ink-2);
+  width: 36px; font-size: 16px; font-family: var(--mono); transition: background .15s;
+}
+.stepper button:hover { background: var(--bg-2); color: var(--accent); }
+.stepper-val {
+  display: flex; align-items: baseline; gap: 6px; padding: 0 16px;
+  border-left: 1px solid var(--line); border-right: 1px solid var(--line);
+  font-family: var(--mono); min-width: 92px; justify-content: center;
+}
+.stepper-num { font-size: 16px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.stepper-lbl { font-size: 10px; color: var(--ink-3); letter-spacing: 0.1em; text-transform: uppercase; }
+.stepper.small button { width: 28px; font-size: 14px; }
+.stepper.small .stepper-val { padding: 4px 12px; min-width: 76px; }
+
+.regen-all {
+  display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px;
+  background: transparent; border: 1px solid var(--line); color: var(--ink-2);
+  font-family: var(--mono); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase;
+  border-radius: 2px; transition: all .15s;
+}
+.regen-all:hover { border-color: var(--accent-dim); color: var(--accent); }
+
+.strength { display: flex; align-items: center; gap: 12px; margin-left: auto; font-family: var(--mono); font-size: 11px; }
+.strength-label { color: var(--ink-3); letter-spacing: 0.12em; text-transform: uppercase; }
+.strength-bar   { width: 140px; height: 4px; background: var(--bg-2); border: 1px solid var(--line-soft); position: relative; overflow: hidden; }
+.strength-fill  { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, var(--warn), var(--accent)); transition: width .3s; }
+.strength-val   { color: var(--ink); font-variant-numeric: tabular-nums; }
+
+/* ── Word chips ─────────────────────────────────── */
+.chips {
+  padding: 32px 24px;
+  display: flex; flex-wrap: wrap; gap: 14px;
+  align-content: flex-start; align-items: flex-start;
+  overflow-y: auto;
+}
+.chips-empty {
+  width: 100%; text-align: center;
+  font-family: var(--mono); color: var(--ink-3);
+  padding: 80px 0; font-size: 12px; letter-spacing: 0.06em;
+}
+.chip {
+  position: relative; display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center; gap: 14px;
+  padding: 14px 16px 14px 14px;
+  font-family: var(--mono); border-radius: 3px; min-width: 180px;
+  border: 1px solid var(--line); background: var(--bg-1);
+  transition: all .2s;
+}
+.chip:hover { border-color: var(--accent-dim); background: var(--bg-2); }
+.chip-index { font-size: 10px; color: var(--ink-4); letter-spacing: 0.1em; font-variant-numeric: tabular-nums; }
+.chip-word  { font-size: 18px; color: var(--ink); letter-spacing: 0.02em; animation: wordIn .35s ease; }
+@keyframes wordIn {
+  from { opacity: 0; transform: translateY(4px); filter: blur(3px); }
+  to   { opacity: 1; transform: none; filter: none; }
+}
+.chip-regen {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; border-radius: 50%;
+  background: transparent; border: 1px solid var(--line); color: var(--ink-3);
+  transition: all .2s;
+}
+.chip-regen:hover { color: var(--accent); border-color: var(--accent-dim); box-shadow: 0 0 0 4px var(--accent-glow); }
+.chip-regen.spin svg { animation: spinr .42s ease-in-out; }
+@keyframes spinr { from{transform:rotate(0)} to{transform:rotate(-360deg)} }
+
+.meta-line { font-family: var(--mono); font-size: 11px; display: flex; gap: 10px; align-items: baseline; }
+
+/* ── Panel 3: passphrase ────────────────────────── */
+.phrase-meta { display: flex; gap: 10px; align-items: baseline; font-family: var(--mono); font-size: 11px; }
+.phrase-stage {
+  display: grid; grid-template-columns: 1fr auto;
+  align-items: center; gap: 32px; padding: 24px; overflow: hidden;
+}
+.phrase-display {
+  font-family: var(--mono); font-size: clamp(20px, 4.2vw, 52px);
+  text-align: center; word-break: break-all; line-height: 1.18;
+  letter-spacing: -0.01em; color: var(--ink);
+  padding: 32px 8px;
+  border: 1px solid var(--line-soft);
+  background:
+    repeating-linear-gradient(0deg, transparent 0 31px, oklch(0.85 0.18 var(--accent-h) / 0.018) 31px 32px),
+    var(--bg-1);
+  border-radius: 2px; position: relative;
+}
+.phrase-display::before {
+  content: "PASSPHRASE";
+  position: absolute; top: 8px; left: 12px;
+  font-size: 9px; letter-spacing: 0.2em; color: var(--ink-4);
+}
+.phrase-placeholder { color: var(--ink-4); font-size: 16px; letter-spacing: 0.1em; }
+.tok-word    { color: var(--ink); }
+.tok-sep     { color: var(--ink-4); }
+.tok-special {
+  color: var(--warn);
+  text-shadow: 0 0 12px oklch(0.82 0.16 var(--warn-h) / 0.5);
+  padding: 0 0.04em;
+}
+.qr-stage { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.qr {
+  width: 168px; height: 168px; color: var(--ink);
+  background: #0a0a0b; padding: 8px;
+  border: 1px solid var(--line); border-radius: 2px;
+}
+.qr-cap { font-family: var(--mono); font-size: 10px; letter-spacing: 0.16em; color: var(--ink-3); }
+
+.phrase-controls {
+  display: flex; flex-wrap: wrap; gap: 18px 28px;
+  padding: 16px 24px; border-top: 1px solid var(--line-soft); align-items: center;
+}
+.ctrl-group { display: flex; align-items: center; gap: 8px; }
+.ctrl-label {
+  font-family: var(--mono); font-size: 10px;
+  letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-3); margin-right: 4px;
+}
+.toggle {
+  background: transparent; border: 1px solid var(--line);
+  color: var(--ink-2); padding: 7px 12px;
+  font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em;
+  border-radius: 2px; transition: all .15s;
+}
+.toggle:hover { color: var(--ink); border-color: var(--ink-4); }
+.toggle.on { border-color: var(--accent-dim); background: var(--accent-glow); color: var(--accent); }
+
+.phrase-actions {
+  display: flex; align-items: center; gap: 12px;
+  padding: 18px 24px; border-top: 1px solid var(--line-soft);
+}
+.copy-btn {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 14px 24px; background: var(--accent); color: #0a0a0b;
+  border: none; font-family: var(--mono); font-size: 13px;
+  font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase;
+  border-radius: 2px; transition: all .15s; flex: 1; justify-content: center;
+}
+.copy-btn:hover:not(:disabled) { box-shadow: 0 0 32px var(--accent-glow), 0 0 0 1px var(--accent); transform: translateY(-1px); }
+.copy-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.back-btn {
+  background: transparent; border: 1px solid var(--line);
+  color: var(--ink-3); padding: 14px 18px;
+  font-family: var(--mono); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase;
+  border-radius: 2px; transition: all .15s;
+}
+.back-btn:hover { color: var(--ink); border-color: var(--ink-4); }
+
+/* ── Responsive ─────────────────────────────────── */
+@media (max-width: 760px) {
+  .panel { padding: 16px 16px 16px 52px; }
+  .topbar-meta { display: none; }
+  .panel-head { flex-wrap: wrap; }
+  .phrase-stage { grid-template-columns: 1fr; }
+  .qr-stage { justify-self: center; }
+  .panel-nav { left: 8px; gap: 12px; }
+  .nav-dot .nav-num { display: none; }
+}
+</style>
+</head>
+<body>
+
+<div class="app" id="app">
+  <!-- ── Top bar ── -->
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">▮▮</span>
+      <span class="brand-name">PASS·PHRASE</span>
+      <span class="brand-ver">v0.4 — entropy build</span>
+    </div>
+    <div class="topbar-meta">
+      <span class="meta-item"><span class="meta-k">pool</span><span class="meta-v" id="meta-pool">0b</span></span>
+      <span class="meta-item"><span class="meta-k">lang</span><span class="meta-v" id="meta-lang">EN</span></span>
+      <span class="meta-item"><span class="meta-k">words</span><span class="meta-v" id="meta-words">0</span></span>
+    </div>
+  </header>
+
+  <!-- ── Left rail nav ── -->
+  <nav class="panel-nav" id="panel-nav">
+    <button class="nav-dot active" data-idx="0"><span class="nav-num">01</span><span class="nav-bar"></span></button>
+    <button class="nav-dot"        data-idx="1"><span class="nav-num">02</span><span class="nav-bar"></span></button>
+    <button class="nav-dot"        data-idx="2"><span class="nav-num">03</span><span class="nav-bar"></span></button>
+  </nav>
+
+  <!-- ── Snap scroller ── -->
+  <main class="scroller" id="scroller">
+
+    <!-- ══════════════ PANEL 1 — ENTROPY ══════════════ -->
+    <section class="panel panel-1">
+      <div class="panel-frame">
+        <div class="panel-head">
+          <div class="panel-tag">
+            <span class="tag-num">01</span>
+            <span class="tag-label">COLLECT ENTROPY</span>
+          </div>
+          <div class="lang-pills" id="lang-pills-1"></div>
+        </div>
+
+        <div class="entropy-canvas-wrap">
+          <canvas class="entropy-canvas" id="entropy-canvas"></canvas>
+          <div class="entropy-overlay">
+            <div class="entropy-hud">
+              <div class="hud-label">ENTROPY</div>
+              <div class="hud-value">
+                <span class="hud-num" id="hud-bits">0</span>
+                <span class="hud-sep">/</span>
+                <span class="hud-target">256</span>
+                <span class="hud-unit">bits</span>
+              </div>
+            </div>
+            <div class="entropy-status" id="entropy-status">
+              <span class="status-collecting">▮ collecting…</span>
+            </div>
+          </div>
+          <div class="entropy-bar">
+            <div class="entropy-bar-fill" id="entropy-bar-fill"></div>
+            <div class="entropy-bar-ticks" id="entropy-bar-ticks"></div>
+          </div>
+        </div>
+
+        <div class="panel-foot panel-foot-1">
+          <div>
+            <div class="instruction-main">Move your mouse to generate randomness</div>
+            <div class="instruction-sub" id="instruction-sub">or mash your keyboard · 256 bits to go</div>
+          </div>
+          <button class="proceed-btn" id="proceed-1" disabled>
+            <span>Proceed</span>
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
+          </button>
+        </div>
+
+        <div class="attribution">
+          entropy collection inspired by <a href="https://lightsecond.com" target="_blank" rel="noopener">lightsecond.com</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════ PANEL 2 — WORDS ══════════════ -->
+    <section class="panel panel-2">
+      <div class="panel-frame">
+        <div class="panel-head">
+          <div class="panel-tag">
+            <span class="tag-num">02</span>
+            <span class="tag-label">GENERATED WORDS</span>
+          </div>
+          <div class="lang-pills compact" id="lang-pills-2"></div>
+        </div>
+
+        <div class="words-controls">
+          <div class="stepper">
+            <button id="w-dec" aria-label="Fewer words">−</button>
+            <div class="stepper-val">
+              <span class="stepper-num" id="w-val">4</span>
+              <span class="stepper-lbl">words</span>
+            </div>
+            <button id="w-inc" aria-label="More words">+</button>
+          </div>
+          <button class="regen-all" id="btn-regen">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3.5-7.1"/><path d="M21 4v5h-5"/></svg>
+            Regenerate all
+          </button>
+          <div class="strength">
+            <div class="strength-label">strength</div>
+            <div class="strength-bar"><div class="strength-fill" id="strength-fill"></div></div>
+            <div class="strength-val" id="strength-val">~0 bits</div>
+          </div>
+        </div>
+
+        <div class="chips" id="chips">
+          <div class="chips-empty">↑ collect entropy in panel 01 to generate words</div>
+        </div>
+
+        <div class="panel-foot">
+          <div class="meta-line">
+            <span class="meta-k">source</span>
+            <span class="meta-v" id="source-val">—</span>
+          </div>
+          <button class="proceed-btn" id="proceed-2" disabled>
+            <span>Assemble</span>
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════ PANEL 3 — PASSPHRASE ══════════════ -->
+    <section class="panel panel-3">
+      <div class="panel-frame">
+        <div class="panel-head">
+          <div class="panel-tag">
+            <span class="tag-num">03</span>
+            <span class="tag-label">FINAL PASSPHRASE</span>
+          </div>
+          <div class="phrase-meta">
+            <span class="meta-k">length</span><span class="meta-v" id="phrase-len">—</span>
+            <span class="meta-k">bits</span><span class="meta-v" id="phrase-bits">—</span>
+          </div>
+        </div>
+
+        <div class="phrase-stage">
+          <div class="phrase-display" id="phrase-display">
+            <span class="phrase-placeholder">— no words yet —</span>
+          </div>
+          <div class="qr-stage" id="qr-stage" style="display:none"></div>
+        </div>
+
+        <div class="phrase-controls">
+          <div class="ctrl-group">
+            <span class="ctrl-label">include</span>
+            <button class="toggle on" id="t-digits">0–9</button>
+            <button class="toggle on" id="t-symbols">!@#</button>
+          </div>
+          <div class="ctrl-group">
+            <span class="ctrl-label">separator</span>
+            <button class="toggle"    id="sep-space">space</button>
+            <button class="toggle on" id="sep-dash">dash</button>
+            <button class="toggle"    id="sep-none">none</button>
+          </div>
+          <div class="ctrl-group">
+            <span class="ctrl-label">insert</span>
+            <div class="stepper small">
+              <button id="c-dec">−</button>
+              <div class="stepper-val">
+                <span class="stepper-num" id="c-val">2</span>
+                <span class="stepper-lbl">chars</span>
+              </div>
+              <button id="c-inc">+</button>
+            </div>
+          </div>
+          <button class="toggle" id="t-qr">show as QR</button>
+        </div>
+
+        <div class="phrase-actions">
+          <button class="copy-btn" id="btn-copy">
+            <svg id="copy-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+            </svg>
+            <span id="copy-label">copy passphrase</span>
+          </button>
+          <button class="back-btn" id="btn-back">start over</button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+'use strict';
+
+const TARGET_BITS = 256;
+const WORDLIST_URL = 'https://static.osmosis.page/wordlist/';
+const LANGS = [
+  { code: 'EN', name: 'English',  file: 'en' },
+  { code: 'DE', name: 'Deutsch',  file: 'de' },
+  { code: 'ES', name: 'Español',  file: 'es' },
+  { code: 'PL', name: 'Polski',   file: 'pl' },
+];
+const SPECIALS = {
+  digits:  '0123456789'.split(''),
+  symbols: '!@#$%^&*?+='.split(''),
+};
+
+// ════════════════════════════════════════════════════
+// ENTROPY POOL (xorshift-based, seeded with CSPRNG)
+// ════════════════════════════════════════════════════
+function makeEntropyPool() {
+  let pool = new Uint32Array(8);
+  crypto.getRandomValues(pool);
+  let collectedBits = 0;
+  const listeners = new Set();
+
+  function rotl(x, n) { return ((x << n) | (x >>> (32 - n))) >>> 0; }
+
+  function mix(...vals) {
+    for (let i = 0; i < vals.length; i++) {
+      const v = (vals[i] | 0) >>> 0;
+      const idx = (i + collectedBits) & 7;
+      let x = pool[idx] ^ v;
+      x ^= x << 13; x >>>= 0;
+      x ^= x >>> 17;
+      x ^= x << 5;  x >>>= 0;
+      pool[idx] = x;
+      pool[(idx + 1) & 7] = (pool[(idx + 1) & 7] ^ rotl(x, 7)) >>> 0;
+    }
+  }
+
+  function addMouse(x, y, t) {
+    mix(x * 73856093, y * 19349663, t * 83492791);
+    collectedBits = Math.min(512, collectedBits + 2);
+    notify();
+  }
+  function addKey(code, t) {
+    mix(code * 2654435761, t * 40503);
+    collectedBits = Math.min(512, collectedBits + 4);
+    notify();
+  }
+  function notify() { listeners.forEach(fn => fn(collectedBits)); }
+  function subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); }
+  function getBits() { return collectedBits; }
+
+  function nextInt(max) {
+    // re-mix with fresh CSPRNG byte before each draw
+    const csp = new Uint32Array(1);
+    crypto.getRandomValues(csp);
+    mix(csp[0], (performance.now() * 1000) | 0);
+    const buf = new Uint8Array(4);
+    for (let i = 0; i < 4; i++) buf[i] = (pool[i] ^ pool[i + 4]) & 0xff;
+    const n = ((buf[0] << 24) | (buf[1] << 16) | (buf[2] << 8) | buf[3]) >>> 0;
+    return n % max;
+  }
+  function pick(arr) { return arr[nextInt(arr.length)]; }
+  function reset() {
+    pool = new Uint32Array(8);
+    crypto.getRandomValues(pool);
+    collectedBits = 0;
+    notify();
+  }
+
+  return { addMouse, addKey, subscribe, getBits, nextInt, pick, reset };
+}
+
+// ════════════════════════════════════════════════════
+// PARTICLE CANVAS
+// ════════════════════════════════════════════════════
+function initParticleCanvas(canvas, pool) {
+  const ctx = canvas.getContext('2d');
+  const particles = [];
+  let rafId;
+
+  function resize() {
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const r = canvas.getBoundingClientRect();
+    canvas.width  = r.width  * dpr;
+    canvas.height = r.height * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  resize();
+  const ro = new ResizeObserver(resize);
+  ro.observe(canvas);
+
+  let last = performance.now();
+  function tick(t) {
+    const dt = Math.min(50, t - last); last = t;
+    const r = canvas.getBoundingClientRect();
+    const accentH = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--accent-h')) || 145;
+
+    ctx.fillStyle = 'rgba(10,10,11,0.18)';
+    ctx.fillRect(0, 0, r.width, r.height);
+
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.life -= dt;
+      if (p.life <= 0) { particles.splice(i, 1); continue; }
+      p.x += p.vx * dt * 0.06;
+      p.y += p.vy * dt * 0.06;
+      p.vx *= 0.96; p.vy *= 0.96;
+      const a   = Math.max(0, p.life / p.max);
+      const hue = (accentH + p.hueOffset) % 360;
+      ctx.beginPath();
+      ctx.fillStyle   = `oklch(0.85 0.18 ${hue} / ${a})`;
+      ctx.shadowColor = `oklch(0.85 0.18 ${hue} / ${a * 0.6})`;
+      ctx.shadowBlur  = 14;
+      ctx.arc(p.x, p.y, 2 + a * 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.shadowBlur = 0;
+    rafId = requestAnimationFrame(tick);
+  }
+  rafId = requestAnimationFrame(tick);
+
+  function spawn(x, y) {
+    pool.addMouse(Math.round(x * 1000), Math.round(y * 1000), Math.round(performance.now()));
+    for (let i = 0; i < 3; i++) {
+      particles.push({
+        x, y,
+        vx: (Math.random() - 0.5) * 4,
+        vy: (Math.random() - 0.5) * 4,
+        life: 800 + Math.random() * 600,
+        max: 1200,
+        hueOffset: (Math.random() - 0.5) * 40,
+      });
+    }
+    if (particles.length > 400) particles.splice(0, particles.length - 400);
+  }
+
+  canvas.addEventListener('mousemove', e => {
+    const r = canvas.getBoundingClientRect();
+    spawn(e.clientX - r.left, e.clientY - r.top);
+  });
+  canvas.addEventListener('touchmove', e => {
+    const t = e.touches[0]; if (!t) return;
+    const r = canvas.getBoundingClientRect();
+    spawn(t.clientX - r.left, t.clientY - r.top);
+  }, { passive: true });
+
+  return () => { cancelAnimationFrame(rafId); ro.disconnect(); };
+}
+
+// ════════════════════════════════════════════════════
+// WORDLIST MANAGER
+// ════════════════════════════════════════════════════
+window.WORDLISTS = { EN: [], DE: [], ES: [], PL: [] };
+const wlLoading = {};
+
+async function loadWordlist(code) {
+  if (window.WORDLISTS[code].length > 0) return window.WORDLISTS[code];
+  if (wlLoading[code]) return wlLoading[code];
+  const lang = LANGS.find(l => l.code === code);
+  wlLoading[code] = fetch(`${WORDLIST_URL}${lang.file}.txt`)
+    .then(r => { if (!r.ok) throw new Error(`${code}: ${r.status}`); return r.text(); })
+    .then(txt => {
+      const words = txt.split('\n').map(w => w.trim()).filter(Boolean);
+      window.WORDLISTS[code] = words;
+      return words;
+    });
+  return wlLoading[code];
+}
+
+// ════════════════════════════════════════════════════
+// PASSPHRASE ASSEMBLY
+// ════════════════════════════════════════════════════
+function buildFinal(words, opts, pool) {
+  const { useDigits, useSymbols, separator, insertCount } = opts;
+  const sep = separator === 'space' ? ' ' : separator === 'dash' ? '-' : '';
+
+  let tokens = words.map(w => ({ kind: 'word', v: w }));
+  if (sep) {
+    const tmp = [];
+    tokens.forEach((t, i) => {
+      tmp.push(t);
+      if (i < tokens.length - 1) tmp.push({ kind: 'sep', v: sep });
+    });
+    tokens = tmp;
+  }
+
+  const specials = [
+    ...(useDigits  ? SPECIALS.digits  : []),
+    ...(useSymbols ? SPECIALS.symbols : []),
+  ];
+  if (!specials.length || insertCount === 0) return tokens;
+
+  for (let i = 0; i < insertCount; i++) {
+    const ch  = pool.pick(specials);
+    const pos = 1 + pool.nextInt(tokens.length);
+    tokens.splice(pos, 0, { kind: 'special', v: ch });
+  }
+  return tokens;
+}
+
+function estimateBits(words, langs) {
+  if (!words.length) return 0;
+  const total = langs.reduce((a, c) => a + (window.WORDLISTS[c]?.length || 0), 0);
+  if (total <= 1) return 0;
+  return Math.round(words.length * Math.log2(total));
+}
+
+// ════════════════════════════════════════════════════
+// QR PLACEHOLDER (deterministic 25×25 SVG)
+// ════════════════════════════════════════════════════
+function renderQRSVG(value) {
+  const N = 25;
+  const cells = new Array(N * N).fill(0);
+  let h = 2166136261;
+  for (let i = 0; i < value.length; i++) { h ^= value.charCodeAt(i); h = (h * 16777619) >>> 0; }
+  for (let i = 0; i < N * N; i++) {
+    h ^= h << 13; h >>>= 0; h ^= h >>> 17; h ^= h << 5; h >>>= 0;
+    cells[i] = h & 1;
+  }
+  const stamp = (cx, cy) => {
+    for (let y = 0; y < 7; y++) for (let x = 0; x < 7; x++) {
+      cells[(cy + y) * N + (cx + x)] =
+        (x === 0 || x === 6 || y === 0 || y === 6 || (x >= 2 && x <= 4 && y >= 2 && y <= 4)) ? 1 : 0;
+    }
+  };
+  stamp(0, 0); stamp(N - 7, 0); stamp(0, N - 7);
+
+  let rects = '';
+  cells.forEach((v, i) => {
+    if (v) rects += `<rect x="${i % N}" y="${Math.floor(i / N)}" width="1" height="1" fill="currentColor"/>`;
+  });
+  return `<svg class="qr" viewBox="0 0 ${N} ${N}" shape-rendering="crispEdges">
+    <rect width="${N}" height="${N}" fill="#0a0a0b"/>
+    ${rects}
+  </svg>`;
+}
+
+// ════════════════════════════════════════════════════
+// STATE
+// ════════════════════════════════════════════════════
+const pool = makeEntropyPool();
+const S = {
+  activeLangs:  ['EN'],
+  wordCount:    4,
+  words:        [],
+  opts: {
+    useDigits:    true,
+    useSymbols:   true,
+    separator:    'dash',
+    insertCount:  2,
+  },
+  showQR:       false,
+  panelIdx:     0,
+};
+let wordsAutoGenerated = false;
+
+// ════════════════════════════════════════════════════
+// LANG PILLS RENDERER (shared for both panels)
+// ════════════════════════════════════════════════════
+function renderLangPills() {
+  ['lang-pills-1', 'lang-pills-2'].forEach(id => {
+    const compact = id.endsWith('-2');
+    const el = document.getElementById(id);
+    el.innerHTML = LANGS.map(l => {
+      const on = S.activeLangs.includes(l.code);
+      return `<button class="pill${on ? ' on' : ''}" data-code="${l.code}" data-pills="${id}">
+        <span class="pill-code">${l.code}</span>
+        ${!compact ? `<span class="pill-name">${l.name}</span>` : ''}
+        <span class="pill-dot"></span>
+      </button>`;
+    }).join('');
+
+    el.querySelectorAll('.pill').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const code = btn.dataset.code;
+        // keep at least one active
+        if (S.activeLangs.includes(code) && S.activeLangs.length === 1) return;
+        btn.classList.add('loading');
+        try {
+          if (S.activeLangs.includes(code)) {
+            S.activeLangs = S.activeLangs.filter(c => c !== code);
+          } else {
+            await loadWordlist(code);
+            S.activeLangs = [...S.activeLangs, code];
+          }
+          renderLangPills();
+          if (S.words.length) { regenAll(); } else { updateStrength(); }
+        } finally { /* noop */ }
+      });
+    });
+  });
+}
+
+// ════════════════════════════════════════════════════
+// WORD CHIP RENDERER
+// ════════════════════════════════════════════════════
+const SVG_REGEN = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3.5-7.1"/><path d="M21 4v5h-5"/></svg>`;
+
+function renderChips() {
+  const el = document.getElementById('chips');
+  if (S.words.length === 0) {
+    el.innerHTML = '<div class="chips-empty">↑ collect entropy in panel 01 to generate words</div>';
+    document.getElementById('proceed-2').disabled = true;
+    return;
+  }
+  el.innerHTML = S.words.map((w, i) =>
+    `<div class="chip" data-idx="${i}">
+      <div class="chip-index">${String(i + 1).padStart(2, '0')}</div>
+      <div class="chip-word">${w}</div>
+      <button class="chip-regen" aria-label="Regenerate word">${SVG_REGEN}</button>
+    </div>`
+  ).join('');
+
+  el.querySelectorAll('.chip-regen').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const i = +btn.closest('.chip').dataset.idx;
+      const lists = S.activeLangs.flatMap(c => window.WORDLISTS[c] || []);
+      if (!lists.length) return;
+      // spin animation
+      btn.classList.add('spin');
+      setTimeout(() => btn.classList.remove('spin'), 450);
+      // replace word + re-render just that chip's word span
+      S.words[i] = pool.pick(lists);
+      const wordEl = btn.closest('.chip').querySelector('.chip-word');
+      wordEl.textContent = S.words[i];
+      // re-trigger animation
+      wordEl.classList.remove('chip-word');
+      void wordEl.offsetWidth;
+      wordEl.classList.add('chip-word');
+      renderPassphrase();
+    });
+  });
+
+  document.getElementById('proceed-2').disabled = false;
+  updateStrength();
+  updateMeta();
+}
+
+function updateStrength() {
+  const bits = estimateBits(S.words, S.activeLangs);
+  document.getElementById('strength-val').textContent = `~${bits} bits`;
+  document.getElementById('strength-fill').style.width = Math.min(100, (bits / 80) * 100) + '%';
+  updatePassphraseMeta(bits);
+}
+
+function updateMeta() {
+  const src = S.activeLangs.map(c => `${c}·${window.WORDLISTS[c]?.length || 0}`).join('  ');
+  document.getElementById('source-val').textContent = src;
+  document.getElementById('meta-lang').textContent  = S.activeLangs.join('·');
+  document.getElementById('meta-words').textContent = S.words.length;
+}
+
+function updatePassphraseMeta(wordBits) {
+  const tokens = buildFinal(S.words, S.opts, pool);
+  const plain  = tokens.map(t => t.v === ' ' ? ' ' : t.v).join('');
+  const extra  = (S.opts.useDigits || S.opts.useSymbols) ? S.opts.insertCount * 5 : 0;
+  document.getElementById('phrase-len').textContent  = plain.length || '—';
+  document.getElementById('phrase-bits').textContent = `~${(wordBits || estimateBits(S.words, S.activeLangs)) + extra}`;
+}
+
+// ════════════════════════════════════════════════════
+// PASSPHRASE RENDERER
+// ════════════════════════════════════════════════════
+function renderPassphrase() {
+  const el = document.getElementById('phrase-display');
+  if (!S.words.length) {
+    el.innerHTML = '<span class="phrase-placeholder">— no words yet —</span>';
+    document.getElementById('phrase-len').textContent  = '—';
+    document.getElementById('phrase-bits').textContent = '—';
+    document.getElementById('btn-copy').disabled = true;
+    return;
+  }
+
+  const tokens   = buildFinal(S.words, S.opts, pool);
+  const plain    = tokens.map(t => t.v).join('');
+  el.dataset.plain = plain;
+
+  el.innerHTML = tokens.map(t => {
+    const safe = t.v === '&' ? '&amp;' : t.v === '<' ? '&lt;' : t.v === '>' ? '&gt;'
+               : t.v === ' ' ? '<span class="tok tok-sep">·</span>' : t.v;
+    if (t.v === ' ') return safe;
+    return `<span class="tok tok-${t.kind}">${safe}</span>`;
+  }).join('');
+
+  document.getElementById('btn-copy').disabled = !plain;
+  updateStrength();
+
+  // QR
+  if (S.showQR && plain) {
+    const qr = document.getElementById('qr-stage');
+    qr.style.display = '';
+    qr.innerHTML = renderQRSVG(plain) + '<div class="qr-cap">SCAN TO TRANSFER</div>';
+  } else {
+    document.getElementById('qr-stage').style.display = 'none';
+  }
+}
+
+// ════════════════════════════════════════════════════
+// WORD GENERATION
+// ════════════════════════════════════════════════════
+function generateWords() {
+  const lists = S.activeLangs.flatMap(c => window.WORDLISTS[c] || []);
+  if (!lists.length) return;
+  S.words = Array.from({ length: S.wordCount }, () => pool.pick(lists));
+  renderChips();
+  renderPassphrase();
+}
+
+function regenAll() { generateWords(); }
+
+// ════════════════════════════════════════════════════
+// ENTROPY UI
+// ════════════════════════════════════════════════════
+// Build 16 tick marks
+const ticksEl = document.getElementById('entropy-bar-ticks');
+ticksEl.innerHTML = Array.from({ length: 16 }, () => '<div class="tick"></div>').join('');
+
+pool.subscribe(bits => {
+  const clamped = Math.min(TARGET_BITS, bits);
+  const pct = (clamped / TARGET_BITS) * 100;
+
+  document.getElementById('hud-bits').textContent  = clamped;
+  document.getElementById('entropy-bar-fill').style.width = pct + '%';
+  document.getElementById('meta-pool').textContent = clamped + 'b';
+
+  const toGo = Math.max(0, TARGET_BITS - bits);
+  document.getElementById('instruction-sub').textContent =
+    toGo > 0 ? `or mash your keyboard · ${toGo} bits to go` : 'pool saturated — ready to proceed';
+
+  if (bits >= TARGET_BITS) {
+    document.getElementById('entropy-status').innerHTML = '<span class="status-ok">▮ pool saturated</span>';
+    document.getElementById('proceed-1').disabled = false;
+  }
+
+  // auto-generate words early (once 64 bits collected)
+  if (bits >= 64 && !wordsAutoGenerated && window.WORDLISTS['EN'].length > 0) {
+    wordsAutoGenerated = true;
+    generateWords();
+  }
+});
+
+// Init canvas + particles
+initParticleCanvas(document.getElementById('entropy-canvas'), pool);
+
+// Global keyboard mixing
+window.addEventListener('keydown', e => pool.addKey(e.keyCode || 0, performance.now()));
+
+// ════════════════════════════════════════════════════
+// PANEL NAV + SCROLL TRACKING
+// ════════════════════════════════════════════════════
+const scroller = document.getElementById('scroller');
+
+scroller.addEventListener('scroll', () => {
+  const i = Math.round(scroller.scrollTop / scroller.clientHeight);
+  const idx = Math.max(0, Math.min(2, i));
+  if (idx !== S.panelIdx) {
+    S.panelIdx = idx;
+    document.querySelectorAll('.nav-dot').forEach((d, j) => d.classList.toggle('active', j === idx));
+  }
+}, { passive: true });
+
+document.querySelectorAll('.nav-dot').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const i = +btn.dataset.idx;
+    scroller.scrollTo({ top: i * scroller.clientHeight, behavior: 'smooth' });
+  });
+});
+
+document.getElementById('proceed-1').addEventListener('click', () => {
+  scroller.scrollTo({ top: scroller.clientHeight, behavior: 'smooth' });
+});
+document.getElementById('proceed-2').addEventListener('click', () => {
+  scroller.scrollTo({ top: 2 * scroller.clientHeight, behavior: 'smooth' });
+  renderPassphrase();
+});
+document.getElementById('btn-back').addEventListener('click', () => {
+  scroller.scrollTo({ top: 0, behavior: 'smooth' });
+});
+
+// ════════════════════════════════════════════════════
+// PANEL 2 CONTROLS
+// ════════════════════════════════════════════════════
+document.getElementById('w-dec').addEventListener('click', () => {
+  if (S.wordCount <= 3) return;
+  S.wordCount--;
+  document.getElementById('w-val').textContent = S.wordCount;
+  if (S.words.length) {
+    S.words = S.words.slice(0, S.wordCount);
+    renderChips(); renderPassphrase();
+  }
+});
+document.getElementById('w-inc').addEventListener('click', () => {
+  if (S.wordCount >= 12) return;
+  S.wordCount++;
+  document.getElementById('w-val').textContent = S.wordCount;
+  if (S.words.length) {
+    const lists = S.activeLangs.flatMap(c => window.WORDLISTS[c] || []);
+    while (S.words.length < S.wordCount) S.words.push(pool.pick(lists));
+    renderChips(); renderPassphrase();
+  }
+});
+document.getElementById('btn-regen').addEventListener('click', regenAll);
+
+// ════════════════════════════════════════════════════
+// PANEL 3 CONTROLS
+// ════════════════════════════════════════════════════
+// Separator
+['sep-space', 'sep-dash', 'sep-none'].forEach(id => {
+  document.getElementById(id).addEventListener('click', () => {
+    S.opts.separator = id === 'sep-space' ? 'space' : id === 'sep-dash' ? 'dash' : 'none';
+    ['sep-space', 'sep-dash', 'sep-none'].forEach(x =>
+      document.getElementById(x).classList.toggle('on', x === id));
+    renderPassphrase();
+  });
+});
+
+// Include toggles
+document.getElementById('t-digits').addEventListener('click', () => {
+  S.opts.useDigits = !S.opts.useDigits;
+  document.getElementById('t-digits').classList.toggle('on', S.opts.useDigits);
+  renderPassphrase();
+});
+document.getElementById('t-symbols').addEventListener('click', () => {
+  S.opts.useSymbols = !S.opts.useSymbols;
+  document.getElementById('t-symbols').classList.toggle('on', S.opts.useSymbols);
+  renderPassphrase();
+});
+
+// Insert count
+document.getElementById('c-dec').addEventListener('click', () => {
+  if (S.opts.insertCount <= 0) return;
+  S.opts.insertCount--;
+  document.getElementById('c-val').textContent = S.opts.insertCount;
+  renderPassphrase();
+});
+document.getElementById('c-inc').addEventListener('click', () => {
+  if (S.opts.insertCount >= 8) return;
+  S.opts.insertCount++;
+  document.getElementById('c-val').textContent = S.opts.insertCount;
+  renderPassphrase();
+});
+
+// QR toggle
+document.getElementById('t-qr').addEventListener('click', () => {
+  S.showQR = !S.showQR;
+  document.getElementById('t-qr').classList.toggle('on', S.showQR);
+  renderPassphrase();
+});
+
+// Copy
+const SVG_CHECK = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>`;
+const SVG_COPY  = document.getElementById('copy-icon').outerHTML;
+
+document.getElementById('btn-copy').addEventListener('click', async () => {
+  const plain = document.getElementById('phrase-display').dataset.plain;
+  if (!plain) return;
+  try {
+    await navigator.clipboard.writeText(plain);
+  } catch {
+    const ta = Object.assign(document.createElement('textarea'), { value: plain });
+    document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+  }
+  const btn = document.getElementById('btn-copy');
+  document.getElementById('copy-icon').outerHTML; // noop ref
+  btn.innerHTML = `${SVG_CHECK}<span>copied to clipboard</span>`;
+  btn.disabled = true;
+  setTimeout(() => {
+    btn.innerHTML = `${SVG_COPY}<span id="copy-label">copy passphrase</span>`;
+    btn.disabled = false;
+  }, 1600);
+});
+
+// ════════════════════════════════════════════════════
+// INIT
+// ════════════════════════════════════════════════════
+renderLangPills();
+loadWordlist('EN').then(() => {
+  if (pool.getBits() >= 64) { wordsAutoGenerated = true; generateWords(); }
+});
+</script>
+</body>
+</html>
