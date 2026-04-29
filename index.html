@@ -233,9 +233,8 @@ a:hover { color: var(--accent); border-color: var(--accent-dim); }
 }
 .entropy-bar-fill {
   position: absolute; inset: 0 auto 0 0;
-  background: linear-gradient(90deg, var(--accent-dim), var(--accent));
-  box-shadow: 0 0 12px var(--accent-glow);
-  transition: width .25s linear;
+  background: oklch(0.35 0.18 30); /* starts dark red, updated via JS */
+  transition: width .25s linear, background .4s ease, box-shadow .4s ease;
 }
 .entropy-bar-ticks { position: absolute; inset: 0; display: flex; pointer-events: none; }
 .entropy-bar-ticks .tick { flex: 1; border-right: 1px solid var(--bg); }
@@ -259,6 +258,12 @@ a:hover { color: var(--accent); border-color: var(--accent-dim); }
 .proceed-btn:hover:not(:disabled) {
   background: var(--accent); color: #0a0a0b;
   box-shadow: 0 0 24px var(--accent-glow);
+}
+.proceed-btn {
+  transition: all .15s, opacity .4s ease, transform .4s ease;
+}
+.proceed-btn.hidden {
+  opacity: 0; pointer-events: none; transform: translateY(6px);
 }
 .proceed-btn:disabled {
   opacity: 0.35; cursor: not-allowed;
@@ -512,7 +517,7 @@ a:hover { color: var(--accent); border-color: var(--accent-dim); }
             <div class="instruction-main">Move your mouse to generate randomness</div>
             <div class="instruction-sub" id="instruction-sub">or mash your keyboard · 256 bits to go</div>
           </div>
-          <button class="proceed-btn" id="proceed-1" disabled>
+          <button class="proceed-btn hidden" id="proceed-1">
             <span>Proceed</span>
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
           </button>
@@ -1066,8 +1071,21 @@ pool.subscribe(bits => {
   const pct = Math.min(100, (bits / TARGET_BITS) * 100);
 
   document.getElementById('hud-bits').textContent  = bits;
-  document.getElementById('entropy-bar-fill').style.width = pct + '%';
   document.getElementById('meta-pool').textContent = bits + 'b';
+
+  // Bar width
+  const fill = document.getElementById('entropy-bar-fill');
+  fill.style.width = pct + '%';
+
+  // Color: dark red (hue 30, L 0.35) → green (hue 145, L 0.85) as pct goes 0→100
+  const t   = pct / 100;
+  const hue = 30  + t * (145 - 30);
+  const lit = 0.35 + t * (0.85 - 0.35);
+  const chr = 0.16 + t * (0.18 - 0.16);
+  fill.style.background  = `oklch(${lit.toFixed(2)} ${chr.toFixed(2)} ${hue.toFixed(1)})`;
+  fill.style.boxShadow   = pct >= 100
+    ? `0 0 12px oklch(0.85 0.18 145 / 0.5)`
+    : `0 0 6px oklch(${lit.toFixed(2)} ${chr.toFixed(2)} ${hue.toFixed(1)} / 0.4)`;
 
   const toGo = Math.max(0, TARGET_BITS - bits);
   document.getElementById('instruction-sub').textContent =
@@ -1075,7 +1093,8 @@ pool.subscribe(bits => {
 
   if (bits >= TARGET_BITS) {
     document.getElementById('entropy-status').innerHTML = '<span class="status-ok">▮ pool saturated</span>';
-    document.getElementById('proceed-1').disabled = false;
+    const btn = document.getElementById('proceed-1');
+    btn.classList.remove('hidden');
   }
 
   // auto-generate words early (once 64 bits collected)
