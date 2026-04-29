@@ -676,12 +676,12 @@ function makeEntropyPool() {
 
   function addMouse(x, y, t) {
     mix(x * 73856093, y * 19349663, t * 83492791);
-    collectedBits = Math.min(512, collectedBits + 2);
+    collectedBits = Math.min(65536, collectedBits + 2);
     notify();
   }
   function addKey(code, t) {
     mix(code * 2654435761, t * 40503);
-    collectedBits = Math.min(512, collectedBits + 4);
+    collectedBits = Math.min(65536, collectedBits + 4);
     notify();
   }
   function notify() { listeners.forEach(fn => fn(collectedBits)); }
@@ -1063,12 +1063,11 @@ const ticksEl = document.getElementById('entropy-bar-ticks');
 ticksEl.innerHTML = Array.from({ length: 16 }, () => '<div class="tick"></div>').join('');
 
 pool.subscribe(bits => {
-  const clamped = Math.min(TARGET_BITS, bits);
-  const pct = (clamped / TARGET_BITS) * 100;
+  const pct = Math.min(100, (bits / TARGET_BITS) * 100);
 
-  document.getElementById('hud-bits').textContent  = clamped;
+  document.getElementById('hud-bits').textContent  = bits;
   document.getElementById('entropy-bar-fill').style.width = pct + '%';
-  document.getElementById('meta-pool').textContent = clamped + 'b';
+  document.getElementById('meta-pool').textContent = bits + 'b';
 
   const toGo = Math.max(0, TARGET_BITS - bits);
   document.getElementById('instruction-sub').textContent =
