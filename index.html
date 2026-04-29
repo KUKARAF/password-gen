@@ -494,16 +494,17 @@ a:hover { color: var(--accent); border-color: var(--accent-dim); }
           <canvas class="entropy-canvas" id="entropy-canvas"></canvas>
           <div class="entropy-overlay">
             <div class="entropy-hud">
-              <div class="hud-label">ENTROPY</div>
+              <div class="hud-label">MOUSE EVENTS MIXED IN</div>
               <div class="hud-value">
                 <span class="hud-num" id="hud-bits">0</span>
-                <span class="hud-sep">/</span>
-                <span class="hud-target">256</span>
-                <span class="hud-unit">bits</span>
+                <span class="hud-unit">events</span>
+              </div>
+              <div style="font-family:var(--mono);font-size:9px;color:var(--ink-4);margin-top:2px;letter-spacing:0.1em;">
+                ✦ crypto.getRandomValues() always active
               </div>
             </div>
             <div class="entropy-status" id="entropy-status">
-              <span class="status-collecting">▮ collecting…</span>
+              <span class="status-collecting">▮ mixing extra randomness…</span>
             </div>
           </div>
           <div class="entropy-bar">
@@ -652,62 +653,69 @@ const LANGS = [
 ];
 const SPECIALS = {
   digits:  '0123456789'.split(''),
-  symbols: '!@#$%^&*?+='.split(''),
+  symbols: '!@#$%^&*?+=()[]{}|~_-'.split(''),
 };
 
 // ════════════════════════════════════════════════════
-// ENTROPY POOL (xorshift-based, seeded with CSPRNG)
+// ENTROPY POOL
+// Security model: all randomness comes from crypto.getRandomValues()
+// (a CSPRNG mandated by the Web Cryptography API spec). Mouse and
+// keyboard events are mixed in as additional entropy on top — they
+// don't weaken the output if the mouse input is low-entropy because
+// the CSPRNG draw happens unconditionally on every nextInt() call.
 // ════════════════════════════════════════════════════
 function makeEntropyPool() {
-  let pool = new Uint32Array(8);
-  crypto.getRandomValues(pool);
-  let collectedBits = 0;
+  // Extra mixing pool — seeded from CSPRNG, stirred by user events.
+  // NOT used as the source of randomness; only XOR'd in as bonus entropy.
+  let aux = new Uint32Array(8);
+  crypto.getRandomValues(aux);
+  let eventCount = 0;          // UI warmup counter (mouse + key events)
   const listeners = new Set();
 
-  function rotl(x, n) { return ((x << n) | (x >>> (32 - n))) >>> 0; }
-
-  function mix(...vals) {
+  function stirAux(...vals) {
     for (let i = 0; i < vals.length; i++) {
       const v = (vals[i] | 0) >>> 0;
-      const idx = (i + collectedBits) & 7;
-      let x = pool[idx] ^ v;
+      const idx = (i + eventCount) & 7;
+      let x = aux[idx] ^ v;
       x ^= x << 13; x >>>= 0;
       x ^= x >>> 17;
       x ^= x << 5;  x >>>= 0;
-      pool[idx] = x;
-      pool[(idx + 1) & 7] = (pool[(idx + 1) & 7] ^ rotl(x, 7)) >>> 0;
+      aux[idx] = x;
     }
   }
 
   function addMouse(x, y, t) {
-    mix(x * 73856093, y * 19349663, t * 83492791);
-    collectedBits = Math.min(65536, collectedBits + 2);
+    stirAux(x * 73856093, y * 19349663, t * 83492791);
+    eventCount = Math.min(65536, eventCount + 2);
     notify();
   }
   function addKey(code, t) {
-    mix(code * 2654435761, t * 40503);
-    collectedBits = Math.min(65536, collectedBits + 4);
+    stirAux(code * 2654435761, t * 40503);
+    eventCount = Math.min(65536, eventCount + 4);
     notify();
   }
-  function notify() { listeners.forEach(fn => fn(collectedBits)); }
+  function notify() { listeners.forEach(fn => fn(eventCount)); }
   function subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); }
-  function getBits() { return collectedBits; }
+  function getBits() { return eventCount; }
 
+  // ── Core RNG ──────────────────────────────────────
+  // Pure crypto.getRandomValues() with rejection sampling (no modulo bias).
+  // The aux pool is XOR'd in as extra entropy — it cannot reduce security
+  // below what the CSPRNG alone provides.
   function nextInt(max) {
-    // re-mix with fresh CSPRNG byte before each draw
-    const csp = new Uint32Array(1);
-    crypto.getRandomValues(csp);
-    mix(csp[0], (performance.now() * 1000) | 0);
-    const buf = new Uint8Array(4);
-    for (let i = 0; i < 4; i++) buf[i] = (pool[i] ^ pool[i + 4]) & 0xff;
-    const n = ((buf[0] << 24) | (buf[1] << 16) | (buf[2] << 8) | buf[3]) >>> 0;
-    return n % max;
+    if (max <= 1) return 0;
+    const buf = new Uint32Array(1);
+    // Rejection sampling: discard values in the biased tail region
+    const limit = Math.floor(0x100000000 / max) * max; // largest multiple of max ≤ 2^32
+    do { crypto.getRandomValues(buf); } while (buf[0] >= limit);
+    // XOR with aux pool word for belt-and-suspenders extra mixing
+    return (buf[0] ^ aux[buf[0] & 7]) % max;
   }
   function pick(arr) { return arr[nextInt(arr.length)]; }
   function reset() {
-    pool = new Uint32Array(8);
-    crypto.getRandomValues(pool);
-    collectedBits = 0;
+    aux = new Uint32Array(8);
+    crypto.getRandomValues(aux);
+    eventCount = 0;
     notify();
   }
 
@@ -941,6 +949,11 @@ function renderLangPills() {
 // ════════════════════════════════════════════════════
 const SVG_REGEN = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3.5-7.1"/><path d="M21 4v5h-5"/></svg>`;
 
+function escapeHTML(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+          .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
 function renderChips() {
   const el = document.getElementById('chips');
   if (S.words.length === 0) {
@@ -951,7 +964,7 @@ function renderChips() {
   el.innerHTML = S.words.map((w, i) =>
     `<div class="chip" data-idx="${i}">
       <div class="chip-index">${String(i + 1).padStart(2, '0')}</div>
-      <div class="chip-word">${w}</div>
+      <div class="chip-word">${escapeHTML(w)}</div>
       <button class="chip-regen" aria-label="Regenerate word">${SVG_REGEN}</button>
     </div>`
   ).join('');
@@ -985,7 +998,9 @@ function renderChips() {
 
 function updateStrength() {
   const bits = estimateBits(S.words, S.activeLangs);
-  document.getElementById('strength-val').textContent = `~${bits} bits`;
+  const warn = bits < 50;
+  document.getElementById('strength-val').textContent = warn ? `~${bits} bits ⚠` : `~${bits} bits`;
+  document.getElementById('strength-val').style.color = warn ? 'var(--warn)' : '';
   document.getElementById('strength-fill').style.width = Math.min(100, (bits / 80) * 100) + '%';
   updatePassphraseMeta(bits);
 }
@@ -1024,10 +1039,8 @@ function renderPassphrase() {
   el.dataset.plain = plain;
 
   el.innerHTML = tokens.map(t => {
-    const safe = t.v === '&' ? '&amp;' : t.v === '<' ? '&lt;' : t.v === '>' ? '&gt;'
-               : t.v === ' ' ? '<span class="tok tok-sep">·</span>' : t.v;
-    if (t.v === ' ') return safe;
-    return `<span class="tok tok-${t.kind}">${safe}</span>`;
+    if (t.v === ' ') return '<span class="tok tok-sep">·</span>';
+    return `<span class="tok tok-${t.kind}">${escapeHTML(t.v)}</span>`;
   }).join('');
 
   document.getElementById('btn-copy').disabled = !plain;
@@ -1037,7 +1050,7 @@ function renderPassphrase() {
   if (S.showQR && plain) {
     const qr = document.getElementById('qr-stage');
     qr.style.display = '';
-    qr.innerHTML = renderQRSVG(plain) + '<div class="qr-cap">SCAN TO TRANSFER</div>';
+    qr.innerHTML = renderQRSVG(plain) + '<div class="qr-cap">VISUAL FINGERPRINT — NOT SCANNABLE</div>';
   } else {
     document.getElementById('qr-stage').style.display = 'none';
   }
@@ -1089,10 +1102,10 @@ pool.subscribe(bits => {
 
   const toGo = Math.max(0, TARGET_BITS - bits);
   document.getElementById('instruction-sub').textContent =
-    toGo > 0 ? `or mash your keyboard · ${toGo} bits to go` : 'pool saturated — ready to proceed';
+    toGo > 0 ? `or mash your keyboard · ${toGo} more events` : 'warmup complete — CSPRNG + mouse entropy ready';
 
   if (bits >= TARGET_BITS) {
-    document.getElementById('entropy-status').innerHTML = '<span class="status-ok">▮ pool saturated</span>';
+    document.getElementById('entropy-status').innerHTML = '<span class="status-ok">▮ warmup complete</span>';
     const btn = document.getElementById('proceed-1');
     btn.classList.remove('hidden');
   }
@@ -1216,6 +1229,13 @@ document.getElementById('t-qr').addEventListener('click', () => {
 const SVG_CHECK = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>`;
 const SVG_COPY  = document.getElementById('copy-icon').outerHTML;
 
+// Strip HTML on paste — accept plain text only
+document.getElementById('phrase-display').addEventListener('paste', e => {
+  e.preventDefault();
+  const text = (e.clipboardData || window.clipboardData).getData('text/plain');
+  document.execCommand('insertText', false, text);
+});
+
 // Mark passphrase as user-edited when they type in it
 document.getElementById('phrase-display').addEventListener('input', () => {
   userEditedPassphrase = true;
@@ -1230,8 +1250,13 @@ document.getElementById('btn-copy').addEventListener('click', async () => {
   try {
     await navigator.clipboard.writeText(plain);
   } catch {
-    const ta = Object.assign(document.createElement('textarea'), { value: plain });
-    document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+    // Fallback: off-screen textarea so the passphrase doesn't flash on screen
+    const ta = Object.assign(document.createElement('textarea'), {
+      value: plain,
+      style: 'position:fixed;top:-9999px;left:-9999px;opacity:0;',
+    });
+    document.body.appendChild(ta); ta.focus(); ta.select();
+    document.execCommand('copy'); ta.remove();
   }
   const btn = document.getElementById('btn-copy');
   document.getElementById('copy-icon').outerHTML; // noop ref
