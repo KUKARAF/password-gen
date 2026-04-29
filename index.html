@@ -486,17 +486,14 @@ a:hover { color: var(--accent); border-color: var(--accent-dim); }
           <canvas class="entropy-canvas" id="entropy-canvas"></canvas>
           <div class="entropy-overlay">
             <div class="entropy-hud">
-              <div class="hud-label">MOUSE EVENTS MIXED IN</div>
+              <div class="hud-label">EVENTS MIXED IN</div>
               <div class="hud-value">
                 <span class="hud-num" id="hud-bits">0</span>
                 <span class="hud-unit">events</span>
               </div>
-              <div style="font-family:var(--mono);font-size:9px;color:var(--ink-4);margin-top:2px;letter-spacing:0.1em;">
-                ✦ crypto.getRandomValues() always active
-              </div>
             </div>
             <div class="entropy-status" id="entropy-status">
-              <span class="status-collecting">▮ mixing extra randomness…</span>
+              <span class="status-collecting">▮ collecting…</span>
             </div>
           </div>
           <div class="entropy-bar">
@@ -721,15 +718,15 @@ function makeEntropyPool() {
 // ════════════════════════════════════════════════════
 function initGameOfLife(canvas, pool) {
   const ctx  = canvas.getContext('2d');
-  const CELL = 8;   // CSS px per cell
-  const STEP = 80;  // ms between generations
+  const CELL = 16;  // CSS px per cell
+  const STEP = 120; // ms between generations
   let cols = 0, rows = 0, grid, next, rafId, lastStep = 0;
 
   function initGrid(c, r) {
     cols = c; rows = r;
     grid = new Uint8Array(cols * rows);
     next = new Uint8Array(cols * rows);
-    for (let i = 0; i < grid.length; i++) grid[i] = Math.random() < 0.08 ? 1 : 0;
+    for (let i = 0; i < grid.length; i++) grid[i] = Math.random() < 0.12 ? 1 : 0;
   }
 
   function resize() {
@@ -781,11 +778,9 @@ function initGameOfLife(canvas, pool) {
   rafId = requestAnimationFrame(tick);
 
   function seedAt(px, py) {
-    const cx = Math.floor(px / CELL), cy = Math.floor(py / CELL), R = 3;
-    for (let dy = -R; dy <= R; dy++)
-      for (let dx = -R; dx <= R; dx++)
-        if (Math.random() < 0.55)
-          grid[((cy + dy + rows) % rows) * cols + ((cx + dx + cols) % cols)] = 1;
+    const cx = Math.floor(px / CELL);
+    const cy = Math.floor(py / CELL);
+    grid[((cy + rows) % rows) * cols + ((cx + cols) % cols)] = 1;
   }
 
   function spawn(x, y) {
