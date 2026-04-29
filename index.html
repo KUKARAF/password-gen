@@ -6,7 +6,7 @@
 <title>Passphrase Generator</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet"/>
 <style>
 :root {
   --bg:       #0a0a0b;
@@ -28,17 +28,17 @@
   --warn-h: 75;
   --warn:     oklch(0.82 0.16 var(--warn-h));
 
-  --mono: "JetBrains Mono", "IBM Plex Mono", ui-monospace, monospace;
-  --sans: "Inter", -apple-system, system-ui, sans-serif;
+  --mono: "Press Start 2P", ui-monospace, monospace;
+  --sans: "Press Start 2P", ui-monospace, monospace;
 }
 
 *, *::before, *::after { box-sizing: border-box; }
 html, body {
   height: 100%; margin: 0;
   background: var(--bg); color: var(--ink);
-  font-family: var(--sans); font-size: 14px;
-  -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
+  font-family: var(--sans); font-size: 10px;
+  -webkit-font-smoothing: none;
+  image-rendering: pixelated;
 }
 ::selection { background: var(--accent); color: #0a0a0b; }
 button { font-family: inherit; cursor: pointer; }
@@ -713,12 +713,20 @@ function makeEntropyPool() {
 }
 
 // ════════════════════════════════════════════════════
-// PARTICLE CANVAS
+// CONWAY'S GAME OF LIFE CANVAS
 // ════════════════════════════════════════════════════
-function initParticleCanvas(canvas, pool) {
-  const ctx = canvas.getContext('2d');
-  const particles = [];
-  let rafId;
+function initGameOfLife(canvas, pool) {
+  const ctx  = canvas.getContext('2d');
+  const CELL = 8;   // CSS px per cell
+  const STEP = 80;  // ms between generations
+  let cols = 0, rows = 0, grid, next, rafId, lastStep = 0;
+
+  function initGrid(c, r) {
+    cols = c; rows = r;
+    grid = new Uint8Array(cols * rows);
+    next = new Uint8Array(cols * rows);
+    for (let i = 0; i < grid.length; i++) grid[i] = Math.random() < 0.08 ? 1 : 0;
+  }
 
   function resize() {
     const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -726,54 +734,59 @@ function initParticleCanvas(canvas, pool) {
     canvas.width  = r.width  * dpr;
     canvas.height = r.height * dpr;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const c = Math.floor(r.width / CELL), r2 = Math.floor(r.height / CELL);
+    if (c !== cols || r2 !== rows) initGrid(c, r2);
   }
   resize();
   const ro = new ResizeObserver(resize);
   ro.observe(canvas);
 
-  let last = performance.now();
-  function tick(t) {
-    const dt = Math.min(50, t - last); last = t;
-    const r = canvas.getBoundingClientRect();
-    const accentH = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--accent-h')) || 145;
-
-    ctx.fillStyle = 'rgba(10,10,11,0.18)';
-    ctx.fillRect(0, 0, r.width, r.height);
-
-    for (let i = particles.length - 1; i >= 0; i--) {
-      const p = particles[i];
-      p.life -= dt;
-      if (p.life <= 0) { particles.splice(i, 1); continue; }
-      p.x += p.vx * dt * 0.06;
-      p.y += p.vy * dt * 0.06;
-      p.vx *= 0.96; p.vy *= 0.96;
-      const a   = Math.max(0, p.life / p.max);
-      const hue = (accentH + p.hueOffset) % 360;
-      ctx.beginPath();
-      ctx.fillStyle   = `oklch(0.85 0.18 ${hue} / ${a})`;
-      ctx.shadowColor = `oklch(0.85 0.18 ${hue} / ${a * 0.6})`;
-      ctx.shadowBlur  = 14;
-      ctx.arc(p.x, p.y, 2 + a * 3, 0, Math.PI * 2);
-      ctx.fill();
+  function step() {
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < cols; x++) {
+        let n = 0;
+        for (let dy = -1; dy <= 1; dy++)
+          for (let dx = -1; dx <= 1; dx++)
+            if (dx || dy) n += grid[((y + dy + rows) % rows) * cols + ((x + dx + cols) % cols)];
+        const a = grid[y * cols + x];
+        next[y * cols + x] = (a ? n === 2 || n === 3 : n === 3) ? 1 : 0;
+      }
     }
+    const tmp = grid; grid = next; next = tmp;
+  }
+
+  function draw() {
+    const r = canvas.getBoundingClientRect();
+    const h = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--accent-h')) || 145;
+    ctx.fillStyle = '#0a0a0b';
+    ctx.fillRect(0, 0, r.width, r.height);
+    ctx.fillStyle   = `oklch(0.85 0.18 ${h})`;
+    ctx.shadowColor = `oklch(0.85 0.18 ${h} / 0.45)`;
+    ctx.shadowBlur  = 5;
+    for (let y = 0; y < rows; y++)
+      for (let x = 0; x < cols; x++)
+        if (grid[y * cols + x]) ctx.fillRect(x * CELL + 1, y * CELL + 1, CELL - 2, CELL - 2);
     ctx.shadowBlur = 0;
+  }
+
+  function tick(t) {
+    if (t - lastStep >= STEP) { step(); lastStep = t; }
+    draw();
     rafId = requestAnimationFrame(tick);
   }
   rafId = requestAnimationFrame(tick);
 
+  function seedAt(px, py) {
+    const cx = Math.floor(px / CELL), cy = Math.floor(py / CELL), R = 3;
+    for (let dy = -R; dy <= R; dy++)
+      for (let dx = -R; dx <= R; dx++)
+        if (Math.random() < 0.55)
+          grid[((cy + dy + rows) % rows) * cols + ((cx + dx + cols) % cols)] = 1;
+  }
+
   function spawn(x, y) {
     pool.addMouse(Math.round(x * 1000), Math.round(y * 1000), Math.round(performance.now()));
-    for (let i = 0; i < 3; i++) {
-      particles.push({
-        x, y,
-        vx: (Math.random() - 0.5) * 4,
-        vy: (Math.random() - 0.5) * 4,
-        life: 800 + Math.random() * 600,
-        max: 1200,
-        hueOffset: (Math.random() - 0.5) * 40,
-      });
-    }
-    if (particles.length > 400) particles.splice(0, particles.length - 400);
+    seedAt(x, y);
   }
 
   canvas.addEventListener('mousemove', e => {
@@ -1070,7 +1083,7 @@ pool.subscribe(bits => {
 });
 
 // Init canvas + particles
-initParticleCanvas(document.getElementById('entropy-canvas'), pool);
+initGameOfLife(document.getElementById('entropy-canvas'), pool);
 
 // Global keyboard mixing
 window.addEventListener('keydown', e => pool.addKey(e.keyCode || 0, performance.now()));
