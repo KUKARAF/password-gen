@@ -1,0 +1,6 @@
+wordlists/raw/
+wordlists/*_raw.txt
+wordlists/de_dys2p.txt
+wordlists/de_freq.txt
+wordlists/es_bip39.txt
+wordlists/pl_freq.txt
