@@ -181,19 +181,21 @@ a:hover { color: var(--accent); border-color: var(--accent-dim); }
 .panel-head.has-source { flex-direction: column; align-items: flex-start; gap: 14px; }
 .source-row {
   width: 100%;
-  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  display: flex; align-items: center; gap: 12px;
   padding: 12px 0 0;
   border-top: 1px solid var(--line-soft);
 }
-.source-row-label {
-  font-family: var(--mono); font-size: 11px; letter-spacing: 0.12em;
-  text-transform: uppercase; color: var(--ink-3);
-  display: flex; flex-direction: column; gap: 3px;
+.source-row .lang-pills { flex: 1; flex-wrap: wrap; }
+.request-lang-btn {
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px;
+  border: 1px dashed var(--line); border-radius: 50%;
+  color: var(--ink-3); font-size: 18px; line-height: 1;
+  text-decoration: none; border-bottom: none;
+  transition: color .15s, border-color .15s;
 }
-.source-row-label strong {
-  color: var(--ink-2); font-size: 12px; letter-spacing: 0.08em;
-}
-.source-row-label span { color: var(--ink-4); font-size: 10px; letter-spacing: 0.14em; }
+.request-lang-btn:hover { color: var(--accent); border-color: var(--accent-dim); }
 
 /* ── Entropy canvas ─────────────────────────────── */
 .entropy-canvas-wrap {
@@ -335,7 +337,8 @@ a:hover { color: var(--accent); border-color: var(--accent-dim); }
 }
 .chip:hover { border-color: var(--accent-dim); background: var(--bg-2); }
 .chip-index { font-size: 10px; color: var(--ink-4); letter-spacing: 0.1em; font-variant-numeric: tabular-nums; }
-.chip-word  { font-size: 18px; color: var(--ink); letter-spacing: 0.02em; animation: wordIn .35s ease; }
+.chip-word  { font-size: 18px; color: var(--ink); letter-spacing: 0.02em; animation: wordIn .35s ease; outline: none; min-width: 2ch; }
+.chip-word:focus { background: var(--bg-3); border-radius: 2px; }
 @keyframes wordIn {
   from { opacity: 0; transform: translateY(4px); filter: blur(3px); }
   to   { opacity: 1; transform: none; filter: none; }
@@ -470,15 +473,12 @@ a:hover { color: var(--accent); border-color: var(--accent-dim); }
           <div style="width:100%;display:flex;align-items:center;justify-content:space-between;">
             <div class="panel-tag">
               <span class="tag-num">01</span>
-              <span class="tag-label">COLLECT ENTROPY</span>
+              <span class="tag-label">COLLECT ENTROPY &amp; SELECT LANGUAGES</span>
             </div>
           </div>
           <div class="source-row">
-            <div class="source-row-label">
-              <strong>Word source languages</strong>
-              <span>dictionaries used to pick passphrase words — not the interface language</span>
-            </div>
             <div class="lang-pills" id="lang-pills-1"></div>
+            <a class="request-lang-btn" href="mailto:hi@osmosis.page" title="request new languages">+</a>
           </div>
         </div>
 
@@ -595,11 +595,13 @@ a:hover { color: var(--accent); border-color: var(--accent-dim); }
             <span class="ctrl-label">include</span>
             <button class="toggle on" id="t-digits">0–9</button>
             <button class="toggle on" id="t-symbols">!@#</button>
+            <button class="toggle"    id="t-diacritics">äöü</button>
           </div>
           <div class="ctrl-group">
             <span class="ctrl-label">separator</span>
+            <button class="toggle on" id="sep-random">random</button>
             <button class="toggle"    id="sep-space">space</button>
-            <button class="toggle on" id="sep-dash">dash</button>
+            <button class="toggle"    id="sep-dash">dash</button>
             <button class="toggle"    id="sep-none">none</button>
           </div>
           <div class="ctrl-group">
@@ -642,9 +644,11 @@ const LANGS = [
   { code: 'PL', name: 'Polski',   file: 'pl' },
 ];
 const SPECIALS = {
-  digits:  '0123456789'.split(''),
-  symbols: '!@#$%^&*?+=()[]{}|~_-'.split(''),
+  digits:     '0123456789'.split(''),
+  symbols:    '!@#$%^&*?+=()[]{}|~_-'.split(''),
+  diacritics: 'äöüáéíóúñàâèêîôùûßąćęłńśźżÄÖÜÁÉÍÓÚÑÀÂÈÊÎÔÙÛ'.split(''),
 };
+const RANDOM_SEPS = ['-', '_', '.', ' ', '-', '-']; // weighted toward dash
 
 // ════════════════════════════════════════════════════
 // ENTROPY POOL
@@ -826,22 +830,28 @@ async function loadWordlist(code) {
 // PASSPHRASE ASSEMBLY
 // ════════════════════════════════════════════════════
 function buildFinal(words, opts, pool) {
-  const { useDigits, useSymbols, separator, insertCount } = opts;
-  const sep = separator === 'space' ? ' ' : separator === 'dash' ? '-' : '';
+  const { useDigits, useSymbols, useDiacritics, separator, insertCount } = opts;
 
   let tokens = words.map(w => ({ kind: 'word', v: w }));
-  if (sep) {
+  if (separator !== 'none') {
     const tmp = [];
     tokens.forEach((t, i) => {
       tmp.push(t);
-      if (i < tokens.length - 1) tmp.push({ kind: 'sep', v: sep });
+      if (i < tokens.length - 1) {
+        let s;
+        if (separator === 'random') s = RANDOM_SEPS[pool.nextInt(RANDOM_SEPS.length)];
+        else if (separator === 'space') s = ' ';
+        else s = '-';
+        tmp.push({ kind: 'sep', v: s });
+      }
     });
     tokens = tmp;
   }
 
   const specials = [
-    ...(useDigits  ? SPECIALS.digits  : []),
-    ...(useSymbols ? SPECIALS.symbols : []),
+    ...(useDigits     ? SPECIALS.digits     : []),
+    ...(useSymbols    ? SPECIALS.symbols    : []),
+    ...(useDiacritics ? SPECIALS.diacritics : []),
   ];
   if (!specials.length || insertCount === 0) return tokens;
 
@@ -872,7 +882,8 @@ const S = {
   opts: {
     useDigits:    true,
     useSymbols:   true,
-    separator:    'dash',
+    useDiacritics: false,
+    separator:    'random',
     insertCount:  2,
   },
   panelIdx:     0,
@@ -937,7 +948,7 @@ function renderChips() {
   el.innerHTML = S.words.map((w, i) =>
     `<div class="chip" data-idx="${i}">
       <div class="chip-index">${String(i + 1).padStart(2, '0')}</div>
-      <div class="chip-word">${escapeHTML(w)}</div>
+      <div class="chip-word" contenteditable="true" spellcheck="false">${escapeHTML(w)}</div>
       <button class="chip-regen" aria-label="Regenerate word">${SVG_REGEN}</button>
     </div>`
   ).join('');
@@ -962,6 +973,18 @@ function renderChips() {
       wordEl.classList.add('chip-word');
       renderPassphrase();
     });
+  });
+
+  el.querySelectorAll('.chip-word').forEach(wordEl => {
+    wordEl.addEventListener('input', () => {
+      const i = +wordEl.closest('.chip').dataset.idx;
+      S.words[i] = wordEl.textContent.trim() || S.words[i];
+      userEditedPassphrase = false;
+      document.getElementById('phrase-display').classList.remove('user-edited');
+      renderPassphrase();
+    });
+    // prevent newlines
+    wordEl.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); wordEl.blur(); } });
   });
 
   document.getElementById('proceed-2').disabled = false;
@@ -1117,7 +1140,7 @@ document.getElementById('proceed-2').addEventListener('click', () => {
   renderPassphrase();
 });
 document.getElementById('btn-back').addEventListener('click', () => {
-  scroller.scrollTo({ top: 0, behavior: 'smooth' });
+  location.reload();
 });
 
 // ════════════════════════════════════════════════════
@@ -1148,11 +1171,12 @@ document.getElementById('btn-regen').addEventListener('click', regenAll);
 // PANEL 3 CONTROLS
 // ════════════════════════════════════════════════════
 // Separator
-['sep-space', 'sep-dash', 'sep-none'].forEach(id => {
+const SEP_IDS = ['sep-random', 'sep-space', 'sep-dash', 'sep-none'];
+const SEP_VAL = { 'sep-random': 'random', 'sep-space': 'space', 'sep-dash': 'dash', 'sep-none': 'none' };
+SEP_IDS.forEach(id => {
   document.getElementById(id).addEventListener('click', () => {
-    S.opts.separator = id === 'sep-space' ? 'space' : id === 'sep-dash' ? 'dash' : 'none';
-    ['sep-space', 'sep-dash', 'sep-none'].forEach(x =>
-      document.getElementById(x).classList.toggle('on', x === id));
+    S.opts.separator = SEP_VAL[id];
+    SEP_IDS.forEach(x => document.getElementById(x).classList.toggle('on', x === id));
     renderPassphrase();
   });
 });
@@ -1166,6 +1190,11 @@ document.getElementById('t-digits').addEventListener('click', () => {
 document.getElementById('t-symbols').addEventListener('click', () => {
   S.opts.useSymbols = !S.opts.useSymbols;
   document.getElementById('t-symbols').classList.toggle('on', S.opts.useSymbols);
+  renderPassphrase();
+});
+document.getElementById('t-diacritics').addEventListener('click', () => {
+  S.opts.useDiacritics = !S.opts.useDiacritics;
+  document.getElementById('t-diacritics').classList.toggle('on', S.opts.useDiacritics);
   renderPassphrase();
 });
 
